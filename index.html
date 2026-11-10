@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Sign in</title>
+  <link rel="stylesheet" href="style.css" />
+  <!-- Google One Tap / Sign-In library (powers the automatic "Sign in with Google" prompt) -->
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
+</head>
+<body>
+  <!-- ========== AUTH VIEW (login + registration) ========== -->
+  <main class="card" id="auth-view">
+    <div class="tabs" role="tablist">
+      <button class="tab active" id="tab-login" role="tab" type="button">Sign in</button>
+      <button class="tab" id="tab-register" role="tab" type="button">Create account</button>
+    </div>
+
+    <button class="btn btn-google" id="google-btn" type="button">
+      <svg width="18" height="18" viewBox="0 0 48 48" aria-hidden="true">
+        <path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9.1 3.6l6.8-6.8C35.8 2.4 30.3 0 24 0 14.6 0 6.5 5.4 2.6 13.2l7.9 6.1C12.4 13.6 17.7 9.5 24 9.5z"/>
+        <path fill="#4285F4" d="M46.5 24.5c0-1.6-.1-3.1-.4-4.5H24v9h12.7c-.6 3-2.3 5.5-4.8 7.2l7.5 5.8c4.4-4.1 7.1-10.1 7.1-17.5z"/>
+        <path fill="#FBBC05" d="M10.5 28.7a14.5 14.5 0 0 1 0-9.4l-7.9-6.1a24 24 0 0 0 0 21.6l7.9-6.1z"/>
+        <path fill="#34A853" d="M24 48c6.5 0 11.9-2.1 15.9-5.8l-7.5-5.8c-2.1 1.4-4.9 2.3-8.4 2.3-6.3 0-11.6-4.1-13.5-9.8l-7.9 6.1C6.5 42.6 14.6 48 24 48z"/>
+      </svg>
+      Continue with Google
+    </button>
+
+    <button class="btn btn-facebook" id="facebook-btn" type="button">
+      <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true" fill="#fff">
+        <path d="M24 12a12 12 0 1 0-13.9 11.9v-8.4h-3V12h3V9.4c0-3 1.8-4.7 4.5-4.7 1.3 0 2.7.2 2.7.2v3h-1.5c-1.5 0-2 .9-2 1.9V12h3.4l-.5 3.5h-2.9v8.4A12 12 0 0 0 24 12z"/>
+      </svg>
+      Continue with Facebook
+    </button>
+
+    <div class="divider"><span>or use email</span></div>
+
+    <!-- Sign-in form -->
+    <form id="login-form" novalidate>
+      <label for="login-email">Email</label>
+      <input id="login-email" type="email" autocomplete="email" required />
+      <label for="login-password">Password</label>
+      <input id="login-password" type="password" autocomplete="current-password" required />
+      <button class="btn btn-primary" type="submit">Sign in</button>
+      <button class="link" id="forgot-btn" type="button">Forgot password?</button>
+      <button class="link hidden" id="resend-btn" type="button">Resend confirmation email</button>
+    </form>
+
+    <!-- Registration form -->
+    <form id="register-form" class="hidden" novalidate>
+      <label for="reg-name">Full name</label>
+      <input id="reg-name" type="text" autocomplete="name" required />
+      <label for="reg-email">Email</label>
+      <input id="reg-email" type="email" autocomplete="email" required />
+      <label for="reg-password">Password (min. 8 characters)</label>
+      <input id="reg-password" type="password" autocomplete="new-password" minlength="8" required />
+      <label for="reg-confirm">Confirm password</label>
+      <input id="reg-confirm" type="password" autocomplete="new-password" required />
+      <button class="btn btn-primary" type="submit">Create account</button>
+    </form>
+
+    <p class="status" id="status" role="status"></p>
+  </main>
+
+  <!-- ========== CHAT VIEW (shown after login) ========== -->
+  <main class="chat hidden" id="chat-view">
+    <!-- Left: me, find people, conversation list -->
+    <aside class="sidebar">
+      <header class="me">
+        <span id="me-avatar"></span>
+        <div class="me-text">
+          <strong id="user-name"></strong>
+          <small id="user-email"></small>
+        </div>
+        <button class="icon-btn" id="logout-btn" type="button">Sign out</button>
+      </header>
+
+      <div class="username-box hidden" id="username-box">
+        <p>Choose a username so friends can find you:</p>
+        <form id="username-form" novalidate>
+          <input id="username-input" type="text" placeholder="e.g. maynard_01" maxlength="30" autocomplete="off" />
+          <button class="mini-btn" type="submit">Save</button>
+        </form>
+        <p class="status" id="username-status" role="status"></p>
+      </div>
+
+      <form class="find" id="find-form" novalidate>
+        <input id="find-input" type="text" placeholder="Find someone by username" autocomplete="off" />
+        <button class="mini-btn" type="submit">Chat</button>
+      </form>
+      <p class="find-status" id="find-status" role="status"></p>
+
+      <ul class="convo-list" id="convo-list"></ul>
+    </aside>
+
+    <!-- Right: the open conversation -->
+    <section class="thread">
+      <div class="empty" id="thread-empty">Select a chat, or find someone by username to start one.</div>
+      <div class="thread-body hidden" id="thread-body">
+        <header class="thread-header">
+          <button class="icon-btn mobile-only" id="back-btn" type="button" aria-label="Back to chats">←</button>
+          <span id="peer-avatar"></span>
+          <strong id="peer-name"></strong>
+        </header>
+        <div class="messages" id="messages" aria-live="polite"></div>
+        <p class="send-status" id="send-status" role="status"></p>
+        <div class="attach-chip hidden" id="attach-chip">
+          <span id="attach-name"></span>
+          <button type="button" id="attach-clear" aria-label="Remove attachment">✕</button>
+        </div>
+        <form class="composer" id="send-form" novalidate>
+          <button type="button" class="attach-btn" id="attach-btn" aria-label="Attach a file" title="Attach a file (max 10 MB)">📎</button>
+          <input id="attach-input" type="file" class="hidden"
+                 accept=".png,.jpg,.jpeg,.gif,.webp,.pdf,.txt,.csv,.zip,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.mp3,.m4a,.wav,.ogg,.mp4,.webm" />
+          <input id="msg-input" type="text" placeholder="Aa" maxlength="2000" autocomplete="off" />
+          <button type="submit" id="send-btn">Send</button>
+        </form>
+      </div>
+    </section>
+  </main>
+
+  <!-- ========== NEW PASSWORD VIEW (opened from the reset-password email) ========== -->
+  <main class="card hidden" id="recovery-view">
+    <h1>Set a new password</h1>
+    <p class="subtitle">Choose a new password for your account</p>
+    <form id="recovery-form" novalidate>
+      <label for="new-password">New password (min. 8 characters)</label>
+      <input id="new-password" type="password" autocomplete="new-password" minlength="8" required />
+      <label for="new-confirm">Confirm new password</label>
+      <input id="new-confirm" type="password" autocomplete="new-password" required />
+      <button class="btn btn-primary" type="submit">Update password</button>
+    </form>
+    <p class="status" id="recovery-status" role="status"></p>
+  </main>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>
