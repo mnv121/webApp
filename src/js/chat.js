@@ -1,6 +1,7 @@
 // ---------------------------------------------------------------
-// Messenger-style chat: conversation list, live messages, unread
-// badges, and finding people by username.
+// Facebook/Messenger-style chat: conversation list, live messages,
+// grouped bubbles with avatars, "Active now", typing indicator,
+// "Seen", unread badges, attachments, and finding people by username.
 // Security: all text is inserted with textContent (never innerHTML),
 // and access is enforced by the database's Row Level Security.
 // ---------------------------------------------------------------
@@ -15,6 +16,22 @@ let refreshTimer = null;
 const seen = new Set(); // message ids already on screen
 let pendingFile = null; // file chosen but not sent yet
 let sending = false;
+let activePeer = null; // the conversation object that is open (peer name, avatar, id)
+let lastMsg = null; // newest message on screen: { sender, at, row, mine }
+let peerReadAt = null; // when the other person last read this chat (for "Seen")
+
+// Presence ("Active now") and typing share one realtime channel.
+// Anyone who can reach the channel sees which user ids are online and which
+// chat id they are typing in (random ids, no names or message text).
+let presenceCh = null;
+let online = {}; // userId -> [{ typing_in }]
+let onlineSig = "";
+let typingFor = null;
+let typingSentAt = 0;
+let typingTimer = null;
+
+const GROUP_MS = 5 * 60 * 1000; // messages closer than this stack into one group
+const SEP_MS = 15 * 60 * 1000; // a gap this long gets a time divider
 
 // Attachments: must match the limits in attachments_schema.sql (the server enforces them too)
 const BUCKET = "chat-files";
@@ -41,19 +58,35 @@ const MESSAGE_COLS =
 const $ = (id) => document.getElementById(id);
 
 // ----- small helpers -----
-function avatarEl(url, name) {
+function avatarEl(url, name, cls = "avatar-sm") {
   if (typeof url === "string" && url.startsWith("https://")) {
     const img = document.createElement("img");
-    img.className = "avatar-sm";
+    img.className = cls;
     img.src = url;
     img.alt = "";
     img.referrerPolicy = "no-referrer";
     return img;
   }
   const d = document.createElement("div");
-  d.className = "avatar-sm initials";
+  d.className = cls + " initials";
   d.textContent = (name || "?").trim().charAt(0).toUpperCase() || "?";
   return d;
+}
+
+const isOnline = (uid) => !!uid && !!online[uid]?.length;
+const isTypingIn = (uid, conv) => (online[uid] || []).some((m) => m.typing_in === conv);
+
+// Avatar with the green "active" dot, like Facebook.
+function avatarWithDot(url, name, uid) {
+  const wrap = document.createElement("span");
+  wrap.className = "avatar-wrap";
+  wrap.append(avatarEl(url, name));
+  if (isOnline(uid)) {
+    const dot = document.createElement("i");
+    dot.className = "dot";
+    wrap.append(dot);
+  }
+  return wrap;
 }
 
 function peerLabel(c) {
@@ -183,7 +216,10 @@ async function refreshList() {
   const { data, error } = await sb.rpc("my_conversations");
   if (error) return setFindStatus(error.message);
   convos = data || [];
+  const open = convos.find((c) => c.conversation_id === activeId);
+  if (open) activePeer = open;
   renderList();
+  updatePeerHeader();
 }
 
 function refreshListSoon() {
@@ -237,7 +273,7 @@ function renderList() {
       side.append(b);
     }
 
-    btn.append(avatarEl(c.peer_avatar, peerLabel(c)), main, side);
+    btn.append(avatarWithDot(c.peer_avatar, peerLabel(c), c.peer_id), main, side);
     btn.addEventListener("click", () => openConversation(c));
     li.append(btn);
     list.append(li);
@@ -248,13 +284,17 @@ function renderList() {
 async function openConversation(c) {
   clearAttachment(); // never carry a chosen file over into a different chat
   setSendStatus("");
+  stopTyping();
   activeId = c.conversation_id;
+  activePeer = c;
+  peerReadAt = null;
   $("peer-name").textContent = peerLabel(c);
-  $("peer-avatar").replaceChildren(avatarEl(c.peer_avatar, peerLabel(c)));
+  updatePeerHeader();
   $("thread-empty").classList.add("hidden");
   $("thread-body").classList.remove("hidden");
   $("chat-view").classList.add("show-thread");
 
+  await loadPeerRead(activeId);
   await loadMessages(activeId);
   await markRead(activeId);
   await refreshList();
@@ -265,6 +305,7 @@ async function loadMessages(id) {
   const box = $("messages");
   box.replaceChildren();
   seen.clear();
+  lastMsg = null;
 
   const { data, error } = await sb
     .from("messages")
@@ -276,6 +317,17 @@ async function loadMessages(id) {
   if (id !== activeId) return; // user switched chats while loading
   if (error) return setFindStatus(error.message);
   for (const m of (data || []).reverse()) appendMessage(m);
+  updateTyping();
+}
+
+function dividerLabel(ms) {
+  const d = new Date(ms);
+  const now = new Date();
+  const time = d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  if (d.toDateString() === now.toDateString()) return time;
+  const opts = { weekday: "short", month: "short", day: "numeric" };
+  if (d.getFullYear() !== now.getFullYear()) opts.year = "numeric";
+  return d.toLocaleDateString([], opts) + ", " + time;
 }
 
 function appendMessage(m) {
@@ -283,23 +335,138 @@ function appendMessage(m) {
   seen.add(m.id);
 
   const box = $("messages");
-  const div = document.createElement("div");
-  div.className = "msg " + (m.sender_id === me.id ? "me" : "them");
-  div.title = new Date(m.created_at).toLocaleString();
+  $("seen-line")?.remove(); // re-added after the new message
+  const mine = m.sender_id === me.id;
+  const at = new Date(m.created_at).getTime();
+  const prev = lastMsg;
+
+  // Time divider when there is a long gap or a new day
+  const needDivider =
+    !prev || at - prev.at > SEP_MS || new Date(prev.at).toDateString() !== new Date(at).toDateString();
+  if (needDivider) {
+    const sep = document.createElement("div");
+    sep.className = "time-sep";
+    sep.textContent = dividerLabel(at);
+    box.append(sep);
+  }
+
+  // Group consecutive messages from the same person (tight corners, one avatar)
+  const grouped = !needDivider && prev.sender === m.sender_id && at - prev.at <= GROUP_MS;
+  if (grouped) {
+    const pr = prev.row;
+    if (pr.classList.contains("single")) pr.classList.replace("single", "first");
+    else if (pr.classList.contains("last")) pr.classList.replace("last", "mid");
+  }
+
+  const row = document.createElement("div");
+  row.className = "row " + (mine ? "mine" : "theirs") + (grouped ? " last" : " single");
+
+  if (!mine) {
+    row.append(
+      avatarEl(activePeer?.peer_avatar, activePeer ? peerLabel(activePeer) : "?", "avatar-xs")
+    );
+  }
+
+  const bubble = document.createElement("div");
+  bubble.className = "msg";
+  bubble.title = new Date(m.created_at).toLocaleString();
   if (m.attachment_path) {
-    div.classList.add("has-file");
-    div.append(attachmentEl(m));
+    bubble.classList.add("has-file");
+    bubble.append(attachmentEl(m));
     if (m.body) {
       const text = document.createElement("div");
       text.className = "att-text";
       text.textContent = m.body;
-      div.append(text);
+      bubble.append(text);
     }
   } else {
-    div.textContent = m.body;
+    bubble.textContent = m.body;
   }
-  box.append(div);
+  row.append(bubble);
+  box.append(row);
+
+  lastMsg = { sender: m.sender_id, at, row, mine };
+  renderSeen();
   box.scrollTop = box.scrollHeight;
+}
+
+// "Sent" / "Seen" under my newest message
+function renderSeen() {
+  $("seen-line")?.remove();
+  if (!lastMsg || !lastMsg.mine) return;
+  const line = document.createElement("div");
+  line.id = "seen-line";
+  line.className = "seen-line";
+  const read = peerReadAt && new Date(peerReadAt).getTime() >= lastMsg.at;
+  line.textContent = read ? "Seen" : "Sent";
+  $("messages").append(line);
+}
+
+async function loadPeerRead(id) {
+  const { data } = await sb
+    .from("conversation_members")
+    .select("user_id, last_read_at")
+    .eq("conversation_id", id)
+    .neq("user_id", me.id);
+  if (id !== activeId) return;
+  peerReadAt = data?.[0]?.last_read_at ?? null;
+}
+
+// ----- presence + typing -----
+function updatePeerHeader() {
+  if (!activePeer) return;
+  const uid = activePeer.peer_id;
+  $("peer-avatar").replaceChildren(avatarWithDot(activePeer.peer_avatar, peerLabel(activePeer), uid));
+  const status = $("peer-status");
+  status.textContent = isOnline(uid) ? "Active now" : "";
+  status.classList.toggle("active-now", isOnline(uid));
+  updateTyping();
+}
+
+function updateTyping() {
+  const box = $("typing");
+  if (!box) return;
+  const on = !!activePeer && !!activeId && isTypingIn(activePeer.peer_id, activeId);
+  box.classList.toggle("hidden", !on);
+  if (on) {
+    const m = $("messages");
+    m.scrollTop = m.scrollHeight;
+  }
+}
+
+function joinPresence() {
+  presenceCh = sb.channel("presence-lobby", { config: { presence: { key: me.id } } });
+  presenceCh
+    .on("presence", { event: "sync" }, () => {
+      online = presenceCh.presenceState();
+      const sig = Object.keys(online).sort().join(",");
+      if (sig !== onlineSig) {
+        onlineSig = sig;
+        renderList(); // green dots in the chat list
+      }
+      updatePeerHeader();
+    })
+    .subscribe(async (status) => {
+      if (status === "SUBSCRIBED") await presenceCh.track({ typing_in: null });
+    });
+}
+
+function signalTyping() {
+  if (!presenceCh || !activeId) return;
+  const now = Date.now();
+  if (typingFor !== activeId || now - typingSentAt > 2500) {
+    typingFor = activeId;
+    typingSentAt = now;
+    presenceCh.track({ typing_in: activeId });
+  }
+  clearTimeout(typingTimer);
+  typingTimer = setTimeout(stopTyping, 3000);
+}
+
+function stopTyping() {
+  clearTimeout(typingTimer);
+  if (typingFor && presenceCh) presenceCh.track({ typing_in: null });
+  typingFor = null;
 }
 
 async function markRead(id) {
@@ -324,7 +491,19 @@ function subscribe() {
       { event: "INSERT", schema: "public", table: "messages" },
       (payload) => onNewMessage(payload.new)
     )
+    .on(
+      "postgres_changes",
+      { event: "UPDATE", schema: "public", table: "conversation_members" },
+      (payload) => {
+        const row = payload.new;
+        if (row.user_id !== me.id && row.conversation_id === activeId) {
+          peerReadAt = row.last_read_at;
+          renderSeen();
+        }
+      }
+    )
     .subscribe();
+  joinPresence();
 }
 
 // ----- UI events (bound once) -----
@@ -332,10 +511,14 @@ function bindUI() {
   if (bound) return;
   bound = true;
 
+  $("msg-input").addEventListener("input", signalTyping);
+  $("msg-input").addEventListener("blur", stopTyping);
+
   // Send a message
   $("send-form").addEventListener("submit", async (e) => {
     e.preventDefault();
     if (!sb || !activeId || sending) return;
+    stopTyping();
     const input = $("msg-input");
     const body = input.value.trim();
     const file = pendingFile;
@@ -468,8 +651,17 @@ export async function startChat(supabase, user) {
 
 export function stopChat() {
   clearTimeout(refreshTimer);
+  clearTimeout(typingTimer);
   if (channel && sb) sb.removeChannel(channel);
+  if (presenceCh && sb) sb.removeChannel(presenceCh);
   channel = null;
+  presenceCh = null;
+  online = {};
+  onlineSig = "";
+  typingFor = null;
+  activePeer = null;
+  lastMsg = null;
+  peerReadAt = null;
   sb = null;
   me = null;
   activeId = null;

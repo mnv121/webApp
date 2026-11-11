@@ -7,6 +7,7 @@
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm";
 import { SUPABASE_URL, SUPABASE_ANON_KEY, GOOGLE_CLIENT_ID } from "./config.js";
 import { startChat, stopChat } from "./chat.js";
+import { startHr, stopHr } from "./hr.js";
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
@@ -17,7 +18,7 @@ const REDIRECT_URL = window.location.origin + window.location.pathname;
 // ----- DOM references -----
 const $ = (id) => document.getElementById(id);
 const authView = $("auth-view");
-const chatView = $("chat-view");
+const appView = $("app-view"); // top bar + Chats + HR
 const recoveryView = $("recovery-view");
 const statusEl = $("status");
 const loginForm = $("login-form");
@@ -237,6 +238,17 @@ async function setupOneTap() {
   google.accounts.id.prompt();
 }
 
+// ----- Top bar: switch between Chats and HR -----
+function showSection(which) {
+  const chat = which === "chat";
+  $("chat-view").classList.toggle("hidden", !chat);
+  $("hr-view").classList.toggle("hidden", chat);
+  $("nav-chat").classList.toggle("active", chat);
+  $("nav-hr").classList.toggle("active", !chat);
+}
+$("nav-chat").addEventListener("click", () => showSection("chat"));
+$("nav-hr").addEventListener("click", () => showSection("hr"));
+
 // ----- Showing the right screen -----
 function render(session) {
   recoveryView.classList.add("hidden");
@@ -244,7 +256,7 @@ function render(session) {
 
   if (user) {
     authView.classList.add("hidden");
-    chatView.classList.remove("hidden");
+    appView.classList.remove("hidden");
 
     // Header of the chat sidebar: who is signed in
     const meta = user.user_metadata || {};
@@ -270,9 +282,12 @@ function render(session) {
     }
 
     startChat(supabase, user);
+    startHr(supabase, user);
   } else {
     stopChat();
-    chatView.classList.add("hidden");
+    stopHr();
+    showSection("chat");
+    appView.classList.add("hidden");
     authView.classList.remove("hidden");
     // Offer the One Tap prompt once the Google library has loaded
     if (document.readyState === "complete") setupOneTap();
@@ -284,8 +299,9 @@ supabase.auth.onAuthStateChange((event, session) => {
   if (event === "PASSWORD_RECOVERY") {
     inRecovery = true;
     stopChat();
+    stopHr();
     authView.classList.add("hidden");
-    chatView.classList.add("hidden");
+    appView.classList.add("hidden");
     recoveryView.classList.remove("hidden");
     return;
   }

@@ -111,8 +111,8 @@ input {
    Chat layout (Messenger style)
    ========================================================= */
 .chat {
-  width: min(96vw, 1000px);
-  height: min(92vh, 720px);
+  width: 100%;
+  height: min(calc(94vh - 70px), 700px);
   display: grid;
   grid-template-columns: 320px 1fr;
   background: #fff;
@@ -154,6 +154,7 @@ input {
 .username-box .status { min-height: 0; margin: 0.4rem 0 0; font-size: 0.8rem; }
 .find { padding: 0.75rem 1rem 0; }
 .find input, .username-box input { flex: 1; min-width: 0; padding: 0.5rem 0.7rem; font-size: 0.9rem; }
+.find input { background: #f0f2f5; border-color: transparent; border-radius: 999px; padding-left: 1rem; }
 .find-status { min-height: 1.1rem; margin: 0; padding: 0.3rem 1rem 0.4rem; font-size: 0.8rem; color: #b91c1c; }
 .find-status.ok { color: #15803d; }
 
@@ -179,13 +180,55 @@ input {
 .thread-body { display: flex; flex-direction: column; height: 100%; min-height: 0; }
 .thread-header { display: flex; align-items: center; gap: 0.7rem; padding: 0.8rem 1rem; border-bottom: 1px solid #e5e7eb; }
 
-.messages { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 0.3rem; padding: 1rem; overflow-y: auto; }
+.messages { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 2px; padding: 1rem 1rem 0.5rem; overflow-y: auto; }
+
+/* one row per message: [avatar] [bubble]; consecutive rows form a group */
+.row { display: flex; align-items: flex-end; gap: 0.4rem; }
+.row.mine { justify-content: flex-end; }
+.row.single, .row.first { margin-top: 0.55rem; }
 .msg {
-  max-width: 70%; padding: 0.5rem 0.8rem; line-height: 1.35; border-radius: 18px;
+  max-width: min(70%, 520px); padding: 0.5rem 0.8rem; line-height: 1.35; border-radius: 18px;
   overflow-wrap: anywhere; white-space: pre-wrap;
 }
-.msg.them { align-self: flex-start; background: #f0f0f0; }
-.msg.me { align-self: flex-end; color: #fff; background: #0084ff; }
+.row.theirs .msg { color: #050505; background: #e4e6eb; }
+.row.mine .msg { color: #fff; background: #0084ff; }
+
+/* tight inner corners inside a group, like Messenger */
+.row.theirs.first .msg { border-bottom-left-radius: 4px; }
+.row.theirs.mid .msg { border-top-left-radius: 4px; border-bottom-left-radius: 4px; }
+.row.theirs.last .msg { border-top-left-radius: 4px; }
+.row.mine.first .msg { border-bottom-right-radius: 4px; }
+.row.mine.mid .msg { border-top-right-radius: 4px; border-bottom-right-radius: 4px; }
+.row.mine.last .msg { border-top-right-radius: 4px; }
+
+/* avatar only beside the last message of a group (space kept so bubbles line up) */
+.avatar-xs { width: 28px; height: 28px; flex: none; border-radius: 50%; object-fit: cover; background: #e5e7eb; }
+.avatar-xs.initials { display: grid; place-items: center; font-size: 0.8rem; font-weight: 600; color: #374151; }
+.row.first .avatar-xs, .row.mid .avatar-xs { visibility: hidden; }
+
+.time-sep { align-self: center; margin: 0.8rem 0 0.2rem; font-size: 0.75rem; color: #65676b; }
+.seen-line { align-self: flex-end; margin: 2px 4px 0; font-size: 0.72rem; color: #65676b; }
+
+/* "Active now" dot and the peer's header line */
+.avatar-wrap { position: relative; display: inline-flex; flex: none; }
+.dot {
+  position: absolute; right: 0; bottom: 0; width: 12px; height: 12px; border-radius: 50%;
+  background: #31a24c; border: 2px solid #fff;
+}
+.peer-text { display: flex; flex-direction: column; min-width: 0; }
+.peer-text small { min-height: 1em; color: #65676b; }
+.peer-text small.active-now { color: #31a24c; }
+
+/* typing indicator: three bouncing dots in a grey bubble */
+.typing {
+  align-self: flex-start; display: flex; gap: 4px; margin: 0 1rem 0.4rem 2.6rem; padding: 0.65rem 0.8rem;
+  background: #e4e6eb; border-radius: 18px; width: fit-content;
+}
+.typing span { width: 6px; height: 6px; border-radius: 50%; background: #65676b; animation: bounce 1.2s infinite ease-in-out; }
+.typing span:nth-child(2) { animation-delay: 0.15s; }
+.typing span:nth-child(3) { animation-delay: 0.3s; }
+@keyframes bounce { 0%, 60%, 100% { transform: translateY(0); opacity: 0.5; } 30% { transform: translateY(-4px); opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .typing span { animation: none; } }
 
 .composer { display: flex; gap: 0.5rem; padding: 0.75rem 1rem; border-top: 1px solid #e5e7eb; }
 .composer input { flex: 1; padding: 0.6rem 1rem; background: #f0f2f5; border-color: transparent; border-radius: 999px; }
@@ -215,15 +258,90 @@ input {
   font: inherit; color: inherit; text-align: left; background: rgba(0, 0, 0, 0.08);
   border: none; border-radius: 12px; cursor: pointer;
 }
-.msg.me .att-file { background: rgba(255, 255, 255, 0.22); }
+.row.mine .att-file { background: rgba(255, 255, 255, 0.22); }
 .att-file .att-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .att-file small { opacity: 0.75; flex: none; }
 
 /* Phones: show either the chat list or the conversation */
 @media (max-width: 700px) {
-  .chat { grid-template-columns: 1fr; height: 96vh; }
+  .chat { grid-template-columns: 1fr; height: calc(96vh - 70px); }
   .thread { display: none; }
   .chat.show-thread .sidebar { display: none; }
   .chat.show-thread .thread { display: flex; }
   .mobile-only { display: inline-flex; }
+}
+
+/* =========================================================
+   App shell: top bar + Chats / HR
+   ========================================================= */
+body:has(.app:not(.hidden)) { place-items: start center; }
+.app { width: min(96vw, 1100px); display: flex; flex-direction: column; gap: 0.75rem; }
+
+.topbar {
+  display: flex; align-items: center; gap: 0.4rem; padding: 0.5rem 0.9rem;
+  background: #fff; border-radius: 14px; box-shadow: 0 4px 16px rgba(0, 0, 0, 0.06);
+}
+.brand { margin-right: 0.6rem; font-size: 1.05rem; color: #0084ff; }
+.top-tab {
+  padding: 0.45rem 0.9rem; font: inherit; font-weight: 600; color: #65676b; background: none;
+  border: none; border-radius: 8px; cursor: pointer;
+}
+.top-tab:hover { background: #f0f2f5; }
+.top-tab.active { color: #0084ff; background: #e7f3ff; }
+.top-tab:focus-visible { outline: 3px solid #93c5fd; outline-offset: 2px; }
+.spacer { flex: 1; }
+.role-badge {
+  padding: 0.25rem 0.7rem; font-size: 0.8rem; font-weight: 600; color: #1d4ed8;
+  background: #dbeafe; border-radius: 999px; white-space: nowrap;
+}
+
+/* =========================================================
+   HR module
+   ========================================================= */
+.hr { background: #fff; border-radius: 16px; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.08); padding: 1.25rem 1.5rem 1.5rem; text-align: left; min-height: 420px; }
+.hr .tabs { margin-bottom: 1rem; overflow-x: auto; }
+.hr .tab { flex: none; padding: 0.6rem 1.1rem; white-space: nowrap; }
+.hr h3 { margin: 0.5rem 0 0.75rem; font-size: 1.1rem; }
+.hr h3.section { display: flex; align-items: center; gap: 0.6rem; margin-top: 1.5rem; }
+.hr .status { text-align: left; margin: 0 0 0.5rem; }
+.muted { color: #6b7280; font-size: 0.85rem; }
+.btn-inline { width: auto; display: inline-flex; margin: 0 0 1rem; padding: 0.5rem 1rem; }
+.search { width: min(100%, 340px); margin: 0 0 0.75rem; display: block; background: #f0f2f5; border-radius: 999px; padding-left: 1rem; }
+
+.table-wrap { overflow-x: auto; border: 1px solid #e5e7eb; border-radius: 10px; }
+table.grid { width: 100%; border-collapse: collapse; font-size: 0.875rem; }
+.grid th { text-align: left; padding: 0.55rem 0.75rem; font-weight: 600; color: #374151; background: #f9fafb; white-space: nowrap; }
+.grid td { padding: 0.55rem 0.75rem; border-top: 1px solid #f1f5f9; vertical-align: middle; }
+.grid tr:hover td { background: #fafbff; }
+.clip { display: inline-block; max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: bottom; }
+.row-actions { display: inline-flex; gap: 0.35rem; }
+
+.pill { display: inline-block; padding: 0.15rem 0.6rem; font-size: 0.75rem; font-weight: 600; color: #374151; background: #f3f4f6; border-radius: 999px; white-space: nowrap; }
+.pill.good { color: #166534; background: #dcfce7; }
+.pill.warn { color: #92400e; background: #fef3c7; }
+.pill.bad { color: #991b1b; background: #fee2e2; }
+.pill.info { color: #1d4ed8; background: #dbeafe; }
+.icon-btn.good { color: #166534; background: #dcfce7; }
+.icon-btn.bad { color: #991b1b; background: #fee2e2; }
+.inline-select { width: auto; padding: 0.3rem 0.5rem; font-size: 0.85rem; border: 1px solid #d1d5db; border-radius: 8px; background: #fff; font-weight: 400; }
+
+dl.facts { display: grid; grid-template-columns: max-content 1fr; gap: 0.5rem 1.5rem; margin: 0 0 1rem; }
+dl.facts dt { color: #6b7280; }
+dl.facts dd { margin: 0; font-weight: 500; }
+
+/* Dialog (add / edit / decide) */
+.dialog { width: min(92vw, 440px); padding: 1.5rem; border: none; border-radius: 16px; box-shadow: 0 20px 60px rgba(0, 0, 0, 0.25); }
+.dialog::backdrop { background: rgba(15, 23, 42, 0.45); }
+.dialog h2 { margin: 0 0 0.5rem; font-size: 1.2rem; }
+.dialog form { max-height: 70vh; overflow-y: auto; padding: 0 0.25rem 0.25rem; }
+.dialog select, .dialog textarea { width: 100%; padding: 0.6rem 0.75rem; font: inherit; border: 1px solid #d1d5db; border-radius: 8px; background: #fff; }
+.dialog label.check { display: flex; align-items: center; gap: 0.5rem; }
+.dialog label.check input { width: auto; }
+.dialog .status { text-align: left; }
+.dialog-actions { display: flex; gap: 0.6rem; margin-top: 0.5rem; }
+.dialog-actions .btn { margin: 0; }
+
+@media (max-width: 700px) {
+  .brand { display: none; }
+  .hr { padding: 1rem; }
 }

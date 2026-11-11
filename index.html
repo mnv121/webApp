@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Sign in</title>
-  <link rel="stylesheet" href="src/webappcss/style.css" />
+  <link rel="stylesheet" href="style.css" />
   <!-- Google One Tap / Sign-In library (powers the automatic "Sign in with Google" prompt) -->
   <script src="https://accounts.google.com/gsi/client" async defer></script>
 </head>
@@ -62,8 +62,19 @@
     <p class="status" id="status" role="status"></p>
   </main>
 
-  <!-- ========== CHAT VIEW (shown after login) ========== -->
-  <main class="chat hidden" id="chat-view">
+  <!-- ========== APP SHELL (shown after login): top bar + Chats / HR ========== -->
+  <div class="app hidden" id="app-view">
+  <nav class="topbar" aria-label="Main">
+    <strong class="brand">Workspace</strong>
+    <button class="top-tab active" id="nav-chat" type="button">💬 Chats</button>
+    <button class="top-tab" id="nav-hr" type="button">👥 HR</button>
+    <span class="spacer"></span>
+    <span class="role-badge hidden" id="role-badge" title="Your access level"></span>
+    <button class="icon-btn" id="logout-btn" type="button">Sign out</button>
+  </nav>
+
+  <!-- ========== CHAT VIEW ========== -->
+  <main class="chat" id="chat-view">
     <!-- Left: me, find people, conversation list -->
     <aside class="sidebar">
       <header class="me">
@@ -72,7 +83,6 @@
           <strong id="user-name"></strong>
           <small id="user-email"></small>
         </div>
-        <button class="icon-btn" id="logout-btn" type="button">Sign out</button>
       </header>
 
       <div class="username-box hidden" id="username-box">
@@ -85,7 +95,7 @@
       </div>
 
       <form class="find" id="find-form" novalidate>
-        <input id="find-input" type="text" placeholder="Find someone by username" autocomplete="off" />
+        <input id="find-input" type="text" placeholder="Search by username" autocomplete="off" />
         <button class="mini-btn" type="submit">Chat</button>
       </form>
       <p class="find-status" id="find-status" role="status"></p>
@@ -100,9 +110,13 @@
         <header class="thread-header">
           <button class="icon-btn mobile-only" id="back-btn" type="button" aria-label="Back to chats">←</button>
           <span id="peer-avatar"></span>
-          <strong id="peer-name"></strong>
+          <div class="peer-text">
+            <strong id="peer-name"></strong>
+            <small id="peer-status"></small>
+          </div>
         </header>
         <div class="messages" id="messages" aria-live="polite"></div>
+        <div class="typing hidden" id="typing" aria-live="polite"><span></span><span></span><span></span></div>
         <p class="send-status" id="send-status" role="status"></p>
         <div class="attach-chip hidden" id="attach-chip">
           <span id="attach-name"></span>
@@ -119,6 +133,16 @@
     </section>
   </main>
 
+  <!-- ========== HR VIEW ========== -->
+  <section class="hr hidden" id="hr-view">
+    <div class="tabs hr-nav" id="hr-nav" role="tablist"></div>
+    <p class="status" id="hr-msg" role="status"></p>
+    <div class="hr-body" id="hr-body"></div>
+  </section>
+  </div>
+
+  <dialog class="dialog" id="hr-dialog"></dialog>
+
   <!-- ========== NEW PASSWORD VIEW (opened from the reset-password email) ========== -->
   <main class="card hidden" id="recovery-view">
     <h1>Set a new password</h1>
@@ -133,6 +157,6 @@
     <p class="status" id="recovery-status" role="status"></p>
   </main>
 
-  <script type="module" src="src/js/app.js"></script>
+  <script type="module" src="app.js"></script>
 </body>
 </html>
