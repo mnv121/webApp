@@ -1,28 +1,14 @@
 // ---------------------------------------------------------------
-// HR module: my profile, requests, employee directory, HR setup,
-// audit log. What you SEE depends on your access level, but the real
-// enforcement is in the database (hr_schema.sql). Hiding a button here
-// is only convenience; a hand-made request still gets refused.
-// All text goes in with textContent (never innerHTML).
+// HR section: my profile, HR requests, employee directory,
+// HR setup (departments / positions / request types), audit log.
+// What you SEE depends on your access level, but the real enforcement
+// is in the database (hr_schema.sql). Hiding a button is convenience only.
 // ---------------------------------------------------------------
+import {
+  ctx, can, el, toast, friendly, when, fullName, badge, button, table, opts, openDialog,
+  statusPill, makeTabs, refreshAccess, ROLE_LABELS,
+} from "./ui.js";
 
-let sb = null; // Supabase client
-let me = null; // signed-in user
-let access = null; // { role, permissions, employee_id }
-let tab = "profile";
-let bound = false;
-
-const $ = (id) => document.getElementById(id);
-const can = (perm) => !!access?.permissions?.includes(perm);
-
-const ROLE_LABELS = {
-  owner: "Owner",
-  system_admin: "System Admin",
-  admin_1: "Admin Level 1",
-  admin_2: "Admin Level 2",
-  admin_3: "Admin Level 3",
-  employee: "Employee",
-};
 const ROLE_ORDER = ["owner", "system_admin", "admin_1", "admin_2", "admin_3", "employee"];
 const STATUS_LABELS = { active: "Active", on_leave: "On leave", inactive: "Inactive" };
 
@@ -31,141 +17,8 @@ const REQ_SELECT =
   "id, details, start_date, end_date, status, decision_note, decided_at, created_at, employee_id, " +
   "employee:employees(first_name, last_name, employee_no), type:request_types(label)";
 
-// ----- tiny DOM helper: el("div", {class: "x", onclick: fn}, child, "text") -----
-function el(tag, props = {}, ...kids) {
-  const node = document.createElement(tag);
-  for (const [k, v] of Object.entries(props)) {
-    if (v == null || v === false) continue;
-    if (k === "class") node.className = v;
-    else if (k === "text") node.textContent = v;
-    else if (k.startsWith("on")) node.addEventListener(k.slice(2), v);
-    else node.setAttribute(k, v === true ? "" : String(v));
-  }
-  node.append(...kids.flat().filter((x) => x != null && x !== false));
-  return node;
-}
-
-function setMsg(text, ok = false) {
-  const m = $("hr-msg");
-  m.textContent = text || "";
-  m.classList.toggle("ok", ok);
-}
-
-function fullName(e) {
-  return e ? `${e.first_name} ${e.last_name}` : "—";
-}
-
-function friendly(err) {
-  if (!err) return "";
-  if (err.code === "23505") return "That already exists (duplicate email, name or code).";
-  if (err.code === "42501" || /row-level security|permission denied|Not allowed/i.test(err.message || ""))
-    return "You don't have permission to do that.";
-  if (err.code === "23514") return "One of the values isn't valid. Check the fields and try again.";
-  return err.message || "Something went wrong.";
-}
-
-function when(iso) {
-  return iso ? new Date(iso).toLocaleString([], { dateStyle: "medium", timeStyle: "short" }) : "—";
-}
-
-function badge(text, kind = "") {
-  return el("span", { class: "pill " + kind, text });
-}
-
-function table(headers, rows, emptyText) {
-  if (!rows.length) return el("p", { class: "muted", text: emptyText });
-  return el(
-    "div",
-    { class: "table-wrap" },
-    el(
-      "table",
-      { class: "grid" },
-      el("thead", {}, el("tr", {}, headers.map((h) => el("th", { text: h })))),
-      el("tbody", {}, rows.map((r) => el("tr", {}, r.map((c) => el("td", {}, c)))))
-    )
-  );
-}
-
-function button(label, onclick, cls = "icon-btn") {
-  return el("button", { type: "button", class: cls, text: label, onclick });
-}
-
-// ----- generic dialog with a small form -----
-// fields: [{ name, label, type: text|email|date|select|textarea|checkbox, required, options, value, maxlength }]
-function openDialog({ title, fields, submitLabel = "Save", onSubmit }) {
-  const dlg = $("hr-dialog");
-  const inputs = {};
-  const status = el("p", { class: "status" });
-  const form = el("form", { novalidate: true });
-
-  for (const f of fields) {
-    let input;
-    if (f.type === "select") {
-      input = el(
-        "select",
-        { name: f.name },
-        (f.options || []).map((o) => el("option", { value: o.value, text: o.label }))
-      );
-    } else if (f.type === "textarea") {
-      input = el("textarea", { name: f.name, rows: 3, maxlength: f.maxlength || 2000 });
-    } else if (f.type === "checkbox") {
-      input = el("input", { type: "checkbox", name: f.name });
-    } else {
-      input = el("input", { type: f.type || "text", name: f.name, maxlength: f.maxlength || 200 });
-    }
-    if (f.type === "checkbox") input.checked = !!f.value;
-    else if (f.value != null) input.value = f.value;
-    inputs[f.name] = input;
-    form.append(
-      f.type === "checkbox"
-        ? el("label", { class: "check" }, input, " " + f.label)
-        : el("label", {}, f.label + (f.required ? " *" : ""), input)
-    );
-  }
-
-  const submit = el("button", { type: "submit", class: "btn btn-primary", text: submitLabel });
-  const cancel = el("button", { type: "button", class: "btn btn-logout", text: "Cancel", onclick: () => dlg.close() });
-  form.append(status, el("div", { class: "dialog-actions" }, cancel, submit));
-
-  form.addEventListener("submit", async (e) => {
-    e.preventDefault();
-    const values = {};
-    for (const f of fields) {
-      const input = inputs[f.name];
-      if (f.type === "checkbox") values[f.name] = input.checked;
-      else {
-        const v = input.value.trim();
-        if (f.required && !v) {
-          status.textContent = `${f.label} is required.`;
-          return;
-        }
-        values[f.name] = v === "" ? null : v;
-      }
-    }
-    submit.disabled = true;
-    status.textContent = "";
-    try {
-      const problem = await onSubmit(values);
-      if (problem) {
-        status.textContent = problem;
-        return;
-      }
-      dlg.close();
-    } catch (err) {
-      console.error(err);
-      status.textContent = friendly(err);
-    } finally {
-      submit.disabled = false;
-    }
-  });
-
-  dlg.replaceChildren(el("h2", { text: title }), form);
-  dlg.showModal();
-  form.querySelector("input, select, textarea")?.focus();
-}
-
-// ----- shared lookups for dropdowns -----
 async function loadLookups() {
+  const sb = ctx.sb;
   const [d, p, t] = await Promise.all([
     sb.from("departments").select("id, name, active").order("name"),
     sb.from("positions").select("id, title, department_id, active").order("title"),
@@ -175,64 +28,14 @@ async function loadLookups() {
   return { departments: d.data, positions: p.data, types: t.data };
 }
 
-const opts = (list, valueKey, labelKey, blank) => [
-  ...(blank ? [{ value: "", label: blank }] : []),
-  ...list.map((x) => ({ value: String(x[valueKey]), label: x[labelKey] })),
-];
-
-// =====================================================================
-// Shell: sub-tabs shown according to access level
-// =====================================================================
-const TABS = [
-  { id: "profile", label: "My profile", show: () => true, render: renderProfile },
-  { id: "requests", label: "Requests", show: () => true, render: renderRequests },
-  { id: "employees", label: "Employees", show: () => can("employee.view_all"), render: renderEmployees },
-  { id: "setup", label: "HR setup", show: () => can("hr.config"), render: renderSetup },
-  { id: "audit", label: "Audit log", show: () => can("audit.view"), render: renderAudit },
-];
-
-function renderNav() {
-  const nav = $("hr-nav");
-  nav.replaceChildren(
-    ...TABS.filter((t) => t.show()).map((t) =>
-      el("button", {
-        type: "button",
-        class: "tab" + (t.id === tab ? " active" : ""),
-        text: t.label,
-        onclick: () => {
-          tab = t.id;
-          renderAll();
-        },
-      })
-    )
-  );
-}
-
-async function renderAll() {
-  renderNav();
-  setMsg("");
-  const body = $("hr-body");
-  const current = TABS.find((t) => t.id === tab && t.show()) || TABS[0];
-  body.replaceChildren(el("p", { class: "muted", text: "Loading…" }));
-  const fresh = el("div");
-  try {
-    await current.render(fresh);
-  } catch (err) {
-    console.error(err);
-    fresh.replaceChildren(el("p", { class: "status", text: friendly(err) }));
-  }
-  if (!access) return; // signed out while loading
-  body.replaceChildren(fresh);
-}
-
 // =====================================================================
 // My profile
 // =====================================================================
-async function renderProfile(box) {
-  const { data, error } = await sb
+async function renderProfile(box, refresh) {
+  const { data, error } = await ctx.sb
     .from("employees")
     .select(EMP_SELECT)
-    .eq("user_id", me.id)
+    .eq("user_id", ctx.me.id)
     .maybeSingle();
   if (error) throw error;
 
@@ -242,13 +45,13 @@ async function renderProfile(box) {
       el("p", {
         class: "notice",
         text:
-          `Your account isn't linked to an employee record yet. Ask HR to add you using this work email: ${me.email || "(none)"}. ` +
+          `Your account isn't linked to an employee record yet. Ask HR to add you using this work email: ${ctx.me.email || "(none)"}. ` +
           "It links automatically once the email matches and is verified.",
       }),
       button("Check again", async () => {
-        await sb.rpc("claim_employee_record");
-        await loadAccess();
-        renderAll();
+        await ctx.sb.rpc("claim_employee_record");
+        await refreshAccess();
+        refresh();
       })
     );
     return;
@@ -267,26 +70,20 @@ async function renderProfile(box) {
       row("Position", data.position?.title),
       row("Hire date", data.hire_date),
       row("Status", STATUS_LABELS[data.status]),
-      row("Access level", ROLE_LABELS[access.role])
+      row("Access level", ROLE_LABELS[ctx.access.role])
     ),
     el("p", { class: "muted", text: "To change any of these, send a “Profile update request” from the Requests tab." })
   );
 }
 
 // =====================================================================
-// Requests
+// General HR requests (payroll, certificates, profile updates, ...)
 // =====================================================================
-function requestStatus(s) {
-  const kind = { pending: "warn", approved: "good", rejected: "bad", cancelled: "" }[s] || "";
-  return badge(s.charAt(0).toUpperCase() + s.slice(1), kind);
-}
+const datesText = (r) => (!r.start_date && !r.end_date ? "—" : `${r.start_date || "?"} → ${r.end_date || "?"}`);
 
-function datesText(r) {
-  if (!r.start_date && !r.end_date) return "—";
-  return `${r.start_date || "?"} → ${r.end_date || "?"}`;
-}
-
-async function renderRequests(box) {
+async function renderRequests(box, refresh) {
+  const sb = ctx.sb;
+  const access = ctx.access;
   const lookups = await loadLookups();
   const { data, error } = await sb
     .from("requests")
@@ -297,7 +94,6 @@ async function renderRequests(box) {
 
   const mine = data.filter((r) => r.employee_id === access.employee_id);
 
-  // --- new request
   box.append(el("h3", { text: "My requests" }));
   if (access.employee_id) {
     box.append(
@@ -308,20 +104,13 @@ async function renderRequests(box) {
             title: "New request",
             submitLabel: "Submit",
             fields: [
-              {
-                name: "type_id",
-                label: "Type",
-                type: "select",
-                required: true,
-                options: opts(lookups.types.filter((t) => t.active), "id", "label"),
-              },
+              { name: "type_id", label: "Type", type: "select", required: true, options: opts(lookups.types.filter((t) => t.active), "id", "label") },
               { name: "details", label: "Details", type: "textarea" },
               { name: "start_date", label: "Start date (if it applies)", type: "date" },
               { name: "end_date", label: "End date (if it applies)", type: "date" },
             ],
             onSubmit: async (v) => {
-              if (v.start_date && v.end_date && v.end_date < v.start_date)
-                return "End date can't be before the start date.";
+              if (v.start_date && v.end_date && v.end_date < v.start_date) return "End date can't be before the start date.";
               const { error: e } = await sb.from("requests").insert({
                 employee_id: access.employee_id,
                 type_id: Number(v.type_id),
@@ -330,7 +119,8 @@ async function renderRequests(box) {
                 end_date: v.end_date,
               });
               if (e) throw e;
-              renderAll();
+              toast("Request sent.", true);
+              refresh();
             },
           }),
         "btn btn-primary btn-inline"
@@ -347,13 +137,13 @@ async function renderRequests(box) {
         r.type?.label || "—",
         el("span", { class: "clip", text: r.details || "—" }),
         datesText(r),
-        el("span", {}, requestStatus(r.status), r.decision_note ? el("small", { class: "muted", text: " “" + r.decision_note + "”" }) : null),
+        el("span", {}, statusPill(r.status), r.decision_note ? el("small", { class: "muted", text: " “" + r.decision_note + "”" }) : null),
         when(r.created_at),
         r.status === "pending"
           ? button("Cancel", async () => {
               const { error: e } = await sb.rpc("cancel_request", { req: r.id });
-              if (e) return setMsg(friendly(e));
-              renderAll();
+              if (e) return toast(friendly(e));
+              refresh();
             })
           : "",
       ]),
@@ -361,13 +151,12 @@ async function renderRequests(box) {
     )
   );
 
-  // --- everyone's requests (HR levels)
   if (can("request.view_all")) {
     const approver = can("request.approve");
     const list = el("div");
     const filter = el(
       "select",
-      { class: "inline-select" },
+      { class: "inline-select", "aria-label": "Filter by status" },
       el("option", { value: "pending", text: "Pending" }),
       el("option", { value: "all", text: "All" }),
       el("option", { value: "approved", text: "Approved" }),
@@ -384,15 +173,12 @@ async function renderRequests(box) {
             r.type?.label || "—",
             el("span", { class: "clip", text: r.details || "—" }),
             datesText(r),
-            requestStatus(r.status),
+            statusPill(r.status),
             when(r.created_at),
             approver && r.status === "pending" && r.employee_id !== access.employee_id
-              ? el(
-                  "span",
-                  { class: "row-actions" },
-                  button("Approve", () => decide(r, true), "icon-btn good"),
-                  button("Reject", () => decide(r, false), "icon-btn bad")
-                )
+              ? el("span", { class: "row-actions" },
+                  button("Approve", () => decide(r, true, refresh), "icon-btn good"),
+                  button("Reject", () => decide(r, false, refresh), "icon-btn bad"))
               : "",
           ]),
           "Nothing here."
@@ -405,15 +191,16 @@ async function renderRequests(box) {
   }
 }
 
-function decide(r, approve) {
+function decide(r, approve, refresh) {
   openDialog({
     title: (approve ? "Approve" : "Reject") + " request",
     submitLabel: approve ? "Approve" : "Reject",
     fields: [{ name: "note", label: "Note to the employee (optional)", type: "textarea", maxlength: 500 }],
     onSubmit: async (v) => {
-      const { error } = await sb.rpc("decide_request", { req: r.id, approve, note: v.note });
+      const { error } = await ctx.sb.rpc("decide_request", { req: r.id, approve, note: v.note });
       if (error) throw error;
-      renderAll();
+      toast(approve ? "Approved." : "Rejected.", true);
+      refresh();
     },
   });
 }
@@ -421,7 +208,8 @@ function decide(r, approve) {
 // =====================================================================
 // Employees (directory, add, edit, access levels)
 // =====================================================================
-async function renderEmployees(box) {
+async function renderEmployees(box, refresh) {
+  const sb = ctx.sb;
   const [emps, roles, lookups] = await Promise.all([
     sb.from("employees").select(EMP_SELECT).order("last_name").limit(1000),
     sb.from("staff_roles").select("user_id, role"),
@@ -440,51 +228,34 @@ async function renderEmployees(box) {
     { name: "work_email", label: "Work email (they sign in with this)", type: "email", required: true, value: e.work_email },
     { name: "phone", label: "Phone", value: e.phone, maxlength: 40 },
     {
-      name: "department_id",
-      label: "Department",
-      type: "select",
+      name: "department_id", label: "Department", type: "select",
       value: e.department_id != null ? String(e.department_id) : "",
       options: opts(lookups.departments.filter((d) => d.active || d.id === e.department_id), "id", "name", "— none —"),
     },
     {
-      name: "position_id",
-      label: "Position",
-      type: "select",
+      name: "position_id", label: "Position", type: "select",
       value: e.position_id != null ? String(e.position_id) : "",
       options: opts(lookups.positions.filter((p) => p.active || p.id === e.position_id), "id", "title", "— none —"),
     },
     {
-      name: "manager_id",
-      label: "Manager",
-      type: "select",
-      value: e.manager_id || "",
+      name: "manager_id", label: "Manager", type: "select", value: e.manager_id || "",
       options: opts(
         emps.data.filter((x) => x.id !== e.id && x.status !== "inactive").map((x) => ({ id: x.id, name: fullName(x) })),
-        "id",
-        "name",
-        "— none —"
+        "id", "name", "— none —"
       ),
     },
     { name: "hire_date", label: "Hire date", type: "date", value: e.hire_date },
     {
-      name: "status",
-      label: "Status",
-      type: "select",
-      value: e.status || "active",
+      name: "status", label: "Status", type: "select", value: e.status || "active",
       options: Object.entries(STATUS_LABELS).map(([value, label]) => ({ value, label })),
     },
   ];
 
   const toPayload = (v) => ({
-    first_name: v.first_name,
-    last_name: v.last_name,
-    work_email: v.work_email,
-    phone: v.phone,
+    first_name: v.first_name, last_name: v.last_name, work_email: v.work_email, phone: v.phone,
     department_id: v.department_id ? Number(v.department_id) : null,
     position_id: v.position_id ? Number(v.position_id) : null,
-    manager_id: v.manager_id || null,
-    hire_date: v.hire_date,
-    status: v.status,
+    manager_id: v.manager_id || null, hire_date: v.hire_date, status: v.status,
   });
 
   if (can("employee.create")) {
@@ -498,7 +269,8 @@ async function renderEmployees(box) {
             onSubmit: async (v) => {
               const { error } = await sb.from("employees").insert(toPayload(v));
               if (error) throw error;
-              renderAll();
+              toast("Employee added.", true);
+              refresh();
             },
           }),
         "btn btn-primary btn-inline"
@@ -529,21 +301,18 @@ async function renderEmployees(box) {
             }
             const { error } = await sb.rpc("set_user_role", { target: e.user_id, new_role: select.value });
             if (error) {
-              setMsg(friendly(error));
+              toast(friendly(error));
               select.value = role;
               return;
             }
-            renderAll();
+            toast("Access level updated.", true);
+            refresh();
           });
           levelCell = select;
         } else levelCell = badge(ROLE_LABELS[role], role === "employee" ? "" : "info");
 
         return [
-          e.employee_no,
-          fullName(e),
-          e.work_email,
-          e.department?.name || "—",
-          e.position?.title || "—",
+          e.employee_no, fullName(e), e.work_email, e.department?.name || "—", e.position?.title || "—",
           badge(STATUS_LABELS[e.status], e.status === "active" ? "good" : e.status === "inactive" ? "bad" : "warn"),
           levelCell,
           canEdit
@@ -554,7 +323,8 @@ async function renderEmployees(box) {
                   onSubmit: async (v) => {
                     const { error } = await sb.from("employees").update(toPayload(v)).eq("id", e.id);
                     if (error) throw error;
-                    renderAll();
+                    toast("Saved.", true);
+                    refresh();
                   },
                 })
               )
@@ -567,106 +337,88 @@ async function renderEmployees(box) {
   box.append(search, list);
   draw();
 
-  if (!canAssign) return;
-  box.append(
-    el("p", {
-      class: "muted",
-      text: "Access levels can only be set for people who have signed in. Only an Owner can change them, and there is always at least one Owner.",
-    })
-  );
+  if (canAssign) {
+    box.append(el("p", { class: "muted", text: "Access levels can only be set for people who have signed in. Only an Owner can change them, and there is always at least one Owner." }));
+  }
 }
 
 // =====================================================================
-// HR setup (Owner + System Admin): departments, positions, request types
+// HR setup (Owner + System Admin)
 // =====================================================================
-async function renderSetup(box) {
+async function renderSetup(box, refresh) {
+  const sb = ctx.sb;
   const l = await loadLookups();
   const deptName = new Map(l.departments.map((d) => [d.id, d.name]));
 
-  const toggle = (table_, id, active) =>
+  const toggle = (tbl, id, active) =>
     button(active ? "Disable" : "Enable", async () => {
-      const { error } = await sb.from(table_).update({ active: !active }).eq("id", id);
-      if (error) return setMsg(friendly(error));
-      renderAll();
+      const { error } = await sb.from(tbl).update({ active: !active }).eq("id", id);
+      if (error) return toast(friendly(error));
+      refresh();
     });
 
-  const section = (title, addLabel, onAdd, headers, rows) => {
-    box.append(
-      el("h3", { class: "section" }, title + " ", button(addLabel, onAdd, "icon-btn")),
-      table(headers, rows, "Nothing yet.")
-    );
-  };
+  const section = (title, onAdd, headers, rows) =>
+    box.append(el("h3", { class: "section" }, title + " ", button("+ Add", onAdd)), table(headers, rows, "Nothing yet."));
 
   section(
     "Departments",
-    "+ Add",
-    () =>
-      openDialog({
-        title: "Add department",
-        fields: [{ name: "name", label: "Name", required: true, maxlength: 100 }],
-        onSubmit: async (v) => {
-          const { error } = await sb.from("departments").insert({ name: v.name });
-          if (error) throw error;
-          renderAll();
-        },
-      }),
+    () => openDialog({
+      title: "Add department",
+      fields: [{ name: "name", label: "Name", required: true, maxlength: 100 }],
+      onSubmit: async (v) => {
+        const { error } = await sb.from("departments").insert({ name: v.name });
+        if (error) throw error;
+        refresh();
+      },
+    }),
     ["Name", "Status", ""],
     l.departments.map((d) => [d.name, badge(d.active ? "Active" : "Disabled", d.active ? "good" : ""), toggle("departments", d.id, d.active)])
   );
 
   section(
     "Positions",
-    "+ Add",
-    () =>
-      openDialog({
-        title: "Add position",
-        fields: [
-          { name: "title", label: "Title", required: true, maxlength: 100 },
-          { name: "department_id", label: "Department", type: "select", options: opts(l.departments.filter((d) => d.active), "id", "name", "— any —") },
-        ],
-        onSubmit: async (v) => {
-          const { error } = await sb
-            .from("positions")
-            .insert({ title: v.title, department_id: v.department_id ? Number(v.department_id) : null });
-          if (error) throw error;
-          renderAll();
-        },
-      }),
+    () => openDialog({
+      title: "Add position",
+      fields: [
+        { name: "title", label: "Title", required: true, maxlength: 100 },
+        { name: "department_id", label: "Department", type: "select", options: opts(l.departments.filter((d) => d.active), "id", "name", "— any —") },
+      ],
+      onSubmit: async (v) => {
+        const { error } = await sb.from("positions").insert({ title: v.title, department_id: v.department_id ? Number(v.department_id) : null });
+        if (error) throw error;
+        refresh();
+      },
+    }),
     ["Title", "Department", "Status", ""],
-    l.positions.map((p) => [
-      p.title,
-      deptName.get(p.department_id) || "—",
-      badge(p.active ? "Active" : "Disabled", p.active ? "good" : ""),
-      toggle("positions", p.id, p.active),
-    ])
+    l.positions.map((p) => [p.title, deptName.get(p.department_id) || "—", badge(p.active ? "Active" : "Disabled", p.active ? "good" : ""), toggle("positions", p.id, p.active)])
   );
 
   section(
     "Request types",
-    "+ Add",
-    () =>
-      openDialog({
-        title: "Add request type",
-        fields: [
-          { name: "label", label: "Name shown to employees", required: true, maxlength: 100 },
-          { name: "code", label: "Short code (a-z, 0-9, _)", required: true, maxlength: 40 },
-        ],
-        onSubmit: async (v) => {
-          if (!/^[a-z0-9_]{2,40}$/.test(v.code)) return "Code: 2-40 characters, lowercase letters, numbers or _.";
-          const { error } = await sb.from("request_types").insert({ label: v.label, code: v.code });
-          if (error) throw error;
-          renderAll();
-        },
-      }),
+    () => openDialog({
+      title: "Add request type",
+      fields: [
+        { name: "label", label: "Name shown to employees", required: true, maxlength: 100 },
+        { name: "code", label: "Short code (a-z, 0-9, _)", required: true, maxlength: 40 },
+      ],
+      onSubmit: async (v) => {
+        if (!/^[a-z0-9_]{2,40}$/.test(v.code)) return "Code: 2-40 characters, lowercase letters, numbers or _.";
+        const { error } = await sb.from("request_types").insert({ label: v.label, code: v.code });
+        if (error) throw error;
+        refresh();
+      },
+    }),
     ["Name", "Code", "Status", ""],
     l.types.map((t) => [t.label, t.code, badge(t.active ? "Active" : "Disabled", t.active ? "good" : ""), toggle("request_types", t.id, t.active)])
   );
+  box.append(el("p", { class: "muted", text: "Tip: leave requests now have their own Leave section, so you can disable the generic “Leave request” type here." }));
 }
 
 // =====================================================================
 // Audit log (Owner)
 // =====================================================================
 async function renderAudit(box) {
+  const sb = ctx.sb;
   const [log, emps] = await Promise.all([
     sb.from("audit_log").select("id, user_id, event, details, created_at").order("created_at", { ascending: false }).limit(150),
     sb.from("employees").select("user_id, first_name, last_name").not("user_id", "is", null),
@@ -690,53 +442,13 @@ async function renderAudit(box) {
 }
 
 // =====================================================================
-// Start / stop (called from app.js)
-// =====================================================================
-async function loadAccess() {
-  const { data, error } = await sb.rpc("my_access");
-  if (error) throw error;
-  access = data?.[0] || { role: "employee", permissions: [], employee_id: null };
-  const b = $("role-badge");
-  b.textContent = ROLE_LABELS[access.role] || "Employee";
-  b.classList.remove("hidden");
-}
+const tabs = makeTabs("hr-view", [
+  { id: "profile", label: "My profile", render: renderProfile },
+  { id: "requests", label: "Requests", render: renderRequests },
+  { id: "employees", label: "Employees", show: () => can("employee.view_all"), render: renderEmployees },
+  { id: "setup", label: "HR setup", show: () => can("hr.config"), render: renderSetup },
+  { id: "audit", label: "Audit log", show: () => can("audit.view"), render: renderAudit },
+]);
 
-export async function startHr(supabase, user) {
-  if (me && me.id === user.id) return;
-  stopHr();
-  sb = supabase;
-  me = user;
-  if (!bound) {
-    bound = true;
-    $("hr-dialog").addEventListener("click", (e) => {
-      if (e.target === e.currentTarget) e.currentTarget.close(); // click on the backdrop
-    });
-  }
-  try {
-    await sb.rpc("claim_employee_record"); // links this login to its HR record by verified email
-    await loadAccess();
-    tab = "profile";
-    await renderAll();
-  } catch (err) {
-    console.error(err);
-    access = null;
-    $("hr-body").replaceChildren(
-      el("p", { class: "status", text: "HR isn't set up yet. Run hr_schema.sql in the Supabase SQL editor, then reload. (" + friendly(err) + ")" })
-    );
-  }
-}
-
-export function stopHr() {
-  sb = null;
-  me = null;
-  access = null;
-  $("hr-dialog")?.close();
-  $("hr-body")?.replaceChildren();
-  $("hr-nav")?.replaceChildren();
-  const b = $("role-badge");
-  if (b) {
-    b.textContent = "";
-    b.classList.add("hidden");
-  }
-  setMsg("");
-}
+export const showHr = () => tabs.show();
+export const stopHr = () => tabs.clear();
