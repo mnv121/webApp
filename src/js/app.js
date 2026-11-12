@@ -7,7 +7,11 @@
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm";
 import { SUPABASE_URL, SUPABASE_ANON_KEY, GOOGLE_CLIENT_ID } from "./config.js";
 import { startChat, stopChat } from "./chat.js";
-import { startHr, stopHr } from "./hr.js";
+import { initSession, clearSession, friendly, $ as byId } from "./ui.js";
+import { showHome, stopHome } from "./dashboard.js";
+import { showLeave, stopLeave } from "./leave.js";
+import { showAttendance, stopAttendance } from "./attendance.js";
+import { showHr, stopHr } from "./hr.js";
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
@@ -238,16 +242,38 @@ async function setupOneTap() {
   google.accounts.id.prompt();
 }
 
-// ----- Top bar: switch between Chats and HR -----
+// ----- Top bar: Home / Chats / Leave / Attendance / HR -----
+// Each section re-loads its data every time you open it, so it is never stale.
+const SECTIONS = {
+  home: { view: "home-view", btn: "nav-home", show: showHome },
+  chat: { view: "chat-view", btn: "nav-chat" },
+  leave: { view: "leave-view", btn: "nav-leave", show: showLeave },
+  attendance: { view: "attendance-view", btn: "nav-attendance", show: showAttendance },
+  hr: { view: "hr-view", btn: "nav-hr", show: showHr },
+};
+let section = "home";
+let ready = false; // true once the signed-in user's access level has loaded
+
 function showSection(which) {
-  const chat = which === "chat";
-  $("chat-view").classList.toggle("hidden", !chat);
-  $("hr-view").classList.toggle("hidden", chat);
-  $("nav-chat").classList.toggle("active", chat);
-  $("nav-hr").classList.toggle("active", !chat);
+  if (!SECTIONS[which]) which = "home";
+  section = which;
+  for (const [name, s] of Object.entries(SECTIONS)) {
+    $(s.view).classList.toggle("hidden", name !== which);
+    $(s.btn).classList.toggle("active", name === which);
+  }
+  if (ready) SECTIONS[which].show?.();
 }
-$("nav-chat").addEventListener("click", () => showSection("chat"));
-$("nav-hr").addEventListener("click", () => showSection("hr"));
+for (const [name, s] of Object.entries(SECTIONS)) $(s.btn).addEventListener("click", () => showSection(name));
+window.addEventListener("navigate", (e) => showSection(e.detail));
+
+function stopSections() {
+  ready = false;
+  stopHome();
+  stopLeave();
+  stopAttendance();
+  stopHr();
+  clearSession();
+}
 
 // ----- Showing the right screen -----
 function render(session) {
@@ -282,11 +308,28 @@ function render(session) {
     }
 
     startChat(supabase, user);
-    startHr(supabase, user);
+    initSession(supabase, user)
+      .then(() => {
+        if (ready) return; // auth refreshes shouldn't reload the screen you're on
+        ready = true;
+        showSection(section);
+      })
+      .catch((err) => {
+        console.error(err);
+        $("home-view").classList.remove("hidden");
+        byId("home-view").querySelector("[data-body]").replaceChildren(
+          Object.assign(document.createElement("p"), {
+            className: "status",
+            textContent:
+              "HR isn't set up yet. Run hr_schema.sql and hr_phase1_schema.sql in the Supabase SQL editor, then reload. (" + friendly(err) + ")",
+          })
+        );
+      });
   } else {
     stopChat();
-    stopHr();
-    showSection("chat");
+    stopSections();
+    section = "home";
+    showSection("home");
     appView.classList.add("hidden");
     authView.classList.remove("hidden");
     // Offer the One Tap prompt once the Google library has loaded
@@ -299,7 +342,7 @@ supabase.auth.onAuthStateChange((event, session) => {
   if (event === "PASSWORD_RECOVERY") {
     inRecovery = true;
     stopChat();
-    stopHr();
+    stopSections();
     authView.classList.add("hidden");
     appView.classList.add("hidden");
     recoveryView.classList.remove("hidden");

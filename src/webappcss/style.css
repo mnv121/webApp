@@ -298,12 +298,12 @@ body:has(.app:not(.hidden)) { place-items: start center; }
 /* =========================================================
    HR module
    ========================================================= */
-.hr { background: #fff; border-radius: 16px; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.08); padding: 1.25rem 1.5rem 1.5rem; text-align: left; min-height: 420px; }
-.hr .tabs { margin-bottom: 1rem; overflow-x: auto; }
-.hr .tab { flex: none; padding: 0.6rem 1.1rem; white-space: nowrap; }
-.hr h3 { margin: 0.5rem 0 0.75rem; font-size: 1.1rem; }
-.hr h3.section { display: flex; align-items: center; gap: 0.6rem; margin-top: 1.5rem; }
-.hr .status { text-align: left; margin: 0 0 0.5rem; }
+.panel { background: #fff; border-radius: 16px; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.08); padding: 1.25rem 1.5rem 1.5rem; text-align: left; min-height: 420px; }
+.panel .tabs { margin-bottom: 1rem; overflow-x: auto; }
+.panel .tab { flex: none; padding: 0.6rem 1.1rem; white-space: nowrap; }
+.panel h3 { margin: 0.5rem 0 0.75rem; font-size: 1.1rem; }
+.panel h3.section { display: flex; align-items: center; gap: 0.6rem; margin-top: 1.5rem; }
+.panel .status { text-align: left; margin: 0 0 0.5rem; }
 .muted { color: #6b7280; font-size: 0.85rem; }
 .btn-inline { width: auto; display: inline-flex; margin: 0 0 1rem; padding: 0.5rem 1rem; }
 .search { width: min(100%, 340px); margin: 0 0 0.75rem; display: block; background: #f0f2f5; border-radius: 999px; padding-left: 1rem; }
@@ -343,5 +343,62 @@ dl.facts dd { margin: 0; font-weight: 500; }
 
 @media (max-width: 700px) {
   .brand { display: none; }
-  .hr { padding: 1rem; }
+  .panel { padding: 1rem; }
+}
+
+/* =========================================================
+   Phase 1: dashboard, leave, attendance
+   ========================================================= */
+.app > .panel { min-height: 0; }
+.top-tab { white-space: nowrap; }
+.topbar { overflow-x: auto; }
+
+.welcome h1 { margin: 0; font-size: 1.5rem; text-align: left; }
+.welcome p { margin: 0.15rem 0 1.1rem; }
+
+.widgets { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; align-items: start; }
+.widget { padding: 1.1rem 1.25rem 1.25rem; border: 1px solid #e5e7eb; border-radius: 14px; background: #fff; }
+.widget h2 { margin: 0 0 0.15rem; font-size: 1.05rem; }
+.widget h3 { margin: 0.9rem 0 0.3rem; font-size: 0.8rem; font-weight: 600; letter-spacing: 0.03em; text-transform: uppercase; color: #6b7280; }
+.widget p { margin: 0.35rem 0; }
+.widget input[type="text"] { margin: 0.4rem 0 0.7rem; }
+.widget-foot { display: flex; justify-content: flex-end; margin-top: 0.8rem; }
+.widget-foot .btn-inline { margin: 0; }
+.ok-text { color: #15803d; font-weight: 600; }
+
+.clock-row { display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap; }
+.big-clock { font-size: 1.9rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+.clock-btn { width: auto; margin: 0; padding: 0.7rem 1.6rem; }
+
+.balance-list { margin: 0.6rem 0 0; padding: 0; list-style: none; }
+.balance-list li { display: flex; justify-content: space-between; align-items: center; gap: 0.75rem; padding: 0.5rem 0; border-top: 1px solid #f1f5f9; }
+.balance-list li:first-child { border-top: none; }
+
+.work-row {
+  width: 100%; display: flex; justify-content: space-between; align-items: center; margin-top: 0.4rem;
+  padding: 0.6rem 0.8rem; font: inherit; text-align: left; color: inherit; background: #f9fafb;
+  border: 1px solid #eef0f3; border-radius: 10px; cursor: pointer;
+}
+.work-row:hover { background: #eff6ff; }
+.work-row:focus-visible { outline: 3px solid #93c5fd; outline-offset: 2px; }
+
+.stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 0.75rem; margin-bottom: 0.5rem; }
+.stat { padding: 0.9rem 1rem; border: 1px solid #e5e7eb; border-radius: 12px; background: #f9fafb; }
+.stat-value { font-size: 1.5rem; font-weight: 700; }
+.stat-label { color: #374151; font-size: 0.85rem; }
+
+.filters { display: flex; align-items: flex-end; gap: 0.75rem; flex-wrap: wrap; margin-bottom: 0.5rem; }
+.filters label { margin: 0; display: flex; flex-direction: column; gap: 0.2rem; }
+.filters .btn-inline { margin: 0; }
+.search.inline { display: inline-block; margin: 0; font-weight: 400; }
+
+.toast {
+  position: fixed; left: 50%; bottom: 1.25rem; z-index: 50; max-width: min(92vw, 520px); transform: translateX(-50%);
+  padding: 0.7rem 1.1rem; color: #fff; background: #b91c1c; border-radius: 12px; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.25);
+}
+.toast.ok { background: #15803d; }
+.dialog .muted { margin: 0.25rem 0 0.5rem; }
+
+@media (max-width: 800px) {
+  .widgets { grid-template-columns: 1fr; }
 }
