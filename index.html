@@ -66,15 +66,23 @@
   <div class="app hidden" id="app-view">
   <nav class="topbar" aria-label="Main">
     <strong class="brand">Workspace</strong>
-    <button class="top-tab active" id="nav-chat" type="button">💬 Chats</button>
+    <button class="top-tab active" id="nav-home" type="button">🏠 Home</button>
+    <button class="top-tab" id="nav-chat" type="button">💬 Chats</button>
+    <button class="top-tab" id="nav-leave" type="button">🌴 Leave</button>
+    <button class="top-tab" id="nav-attendance" type="button">⏱️ Attendance</button>
     <button class="top-tab" id="nav-hr" type="button">👥 HR</button>
     <span class="spacer"></span>
     <span class="role-badge hidden" id="role-badge" title="Your access level"></span>
     <button class="icon-btn" id="logout-btn" type="button">Sign out</button>
   </nav>
 
+  <!-- ========== HOME / LEAVE / ATTENDANCE ========== -->
+  <section class="panel" id="home-view"><div data-body></div></section>
+  <section class="panel hidden" id="leave-view"><div class="tabs" data-nav></div><div data-body></div></section>
+  <section class="panel hidden" id="attendance-view"><div class="tabs" data-nav></div><div data-body></div></section>
+
   <!-- ========== CHAT VIEW ========== -->
-  <main class="chat" id="chat-view">
+  <main class="chat hidden" id="chat-view">
     <!-- Left: me, find people, conversation list -->
     <aside class="sidebar">
       <header class="me">
@@ -134,14 +142,11 @@
   </main>
 
   <!-- ========== HR VIEW ========== -->
-  <section class="hr hidden" id="hr-view">
-    <div class="tabs hr-nav" id="hr-nav" role="tablist"></div>
-    <p class="status" id="hr-msg" role="status"></p>
-    <div class="hr-body" id="hr-body"></div>
-  </section>
+  <section class="panel hidden" id="hr-view"><div class="tabs" data-nav></div><div data-body></div></section>
   </div>
 
   <dialog class="dialog" id="hr-dialog"></dialog>
+  <div class="toast hidden" id="toast" role="status" aria-live="polite"></div>
 
   <!-- ========== NEW PASSWORD VIEW (opened from the reset-password email) ========== -->
   <main class="card hidden" id="recovery-view">
