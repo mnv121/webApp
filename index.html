@@ -3,14 +3,19 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Sign in</title>
-  <link rel="stylesheet" href="src/webappcss/style.css" />
+  <title>Workspace</title>
+  <link rel="stylesheet" href="src/webappcss/base.css" />
+  <link rel="stylesheet" href="src/webappcss/auth.css" />
+  <link rel="stylesheet" href="src/webappcss/layout.css" />
+  <link rel="stylesheet" href="src/webappcss/components.css" />
+  <link rel="stylesheet" href="src/webappcss/dashboard.css" />
+  <link rel="stylesheet" href="src/webappcss/chat.css" />
   <!-- Google One Tap / Sign-In library (powers the automatic "Sign in with Google" prompt) -->
   <script src="https://accounts.google.com/gsi/client" async defer></script>
 </head>
-<body>
-  <!-- ========== AUTH VIEW (login + registration) ========== -->
-  <main class="card" id="auth-view">
+<body data-screen="auth">
+  <main class="card auth-card" id="auth-view">
+        <div class="auth-brand"><span class="brand-mark">W</span><strong>Workspace</strong></div>
     <div class="tabs" role="tablist">
       <button class="tab active" id="tab-login" role="tab" type="button">Sign in</button>
       <button class="tab" id="tab-register" role="tab" type="button">Create account</button>
@@ -62,94 +67,124 @@
     <p class="status" id="status" role="status"></p>
   </main>
 
-  <!-- ========== APP SHELL (shown after login): top bar + Chats / HR ========== -->
-  <div class="app hidden" id="app-view">
-  <nav class="topbar" aria-label="Main">
-    <strong class="brand">Workspace</strong>
-    <button class="top-tab active" id="nav-home" type="button">🏠 Home</button>
-    <button class="top-tab" id="nav-chat" type="button">💬 Chats</button>
-    <button class="top-tab" id="nav-leave" type="button">🌴 Leave</button>
-    <button class="top-tab" id="nav-attendance" type="button">⏱️ Attendance</button>
-    <button class="top-tab" id="nav-hr" type="button">👥 HR</button>
-    <span class="spacer"></span>
-    <span class="role-badge hidden" id="role-badge" title="Your access level"></span>
-    <button class="icon-btn" id="logout-btn" type="button">Sign out</button>
-  </nav>
+  <!-- ========== APP (shown after login) ========== -->
+  <div class="shell" id="app-view">
+    <aside class="sidebar-nav" aria-label="Main">
+      <div class="brand"><span class="brand-mark">W</span><span class="brand-name">Workspace</span></div>
+      <nav class="nav-list" id="nav-list"></nav>
+      <div class="side-foot">
+        <span class="role-chip hidden" id="role-badge"></span>
+        <button class="nav-item" id="logout-btn" type="button" title="Sign out"><span data-icon="logout" data-size="20"></span><span class="nav-label">Sign out</span></button>
+      </div>
+    </aside>
 
-  <!-- ========== HOME / LEAVE / ATTENDANCE ========== -->
-  <section class="panel" id="home-view"><div data-body></div></section>
-  <section class="panel hidden" id="leave-view"><div class="tabs" data-nav></div><div data-body></div></section>
-  <section class="panel hidden" id="attendance-view"><div class="tabs" data-nav></div><div data-body></div></section>
-
-  <!-- ========== CHAT VIEW ========== -->
-  <main class="chat hidden" id="chat-view">
-    <!-- Left: me, find people, conversation list -->
-    <aside class="sidebar">
-      <header class="me">
-        <span id="me-avatar"></span>
-        <div class="me-text">
-          <strong id="user-name"></strong>
-          <small id="user-email"></small>
+    <div class="main">
+      <header class="topbar">
+        <div class="page-title">
+          <small id="greeting"></small>
+          <h1 id="page-title">Home</h1>
+        </div>
+        <button class="search-pill" id="search-btn" type="button" aria-label="Search any action">
+          <span data-icon="search" data-size="18"></span>
+          <span class="search-text">Search any action</span>
+          <kbd>Ctrl K</kbd>
+        </button>
+        <div class="top-actions">
+          <div class="pop-wrap">
+            <button class="round-btn" id="bell-btn" type="button" aria-label="Notifications">
+              <span data-icon="bell" data-size="20"></span>
+              <span class="dot-badge hidden" id="bell-count"></span>
+            </button>
+            <div class="popover hidden" id="bell-pop"></div>
+          </div>
+          <div class="pop-wrap">
+            <button class="avatar-btn" id="avatar-btn" type="button" aria-label="Account menu"></button>
+            <div class="popover hidden" id="account-pop"></div>
+          </div>
         </div>
       </header>
 
-      <div class="username-box hidden" id="username-box">
-        <p>Choose a username so friends can find you:</p>
-        <form id="username-form" novalidate>
-          <input id="username-input" type="text" placeholder="e.g. maynard_01" maxlength="30" autocomplete="off" />
-          <button class="mini-btn" type="submit">Save</button>
-        </form>
-        <p class="status" id="username-status" role="status"></p>
+      <div class="content" id="main-scroll">
+        <section class="view" id="home-view"><div data-body></div></section>
+        <section class="view hidden" id="leave-view"><div class="tabs" data-nav></div><div data-body></div></section>
+        <section class="view hidden" id="attendance-view"><div class="tabs" data-nav></div><div data-body></div></section>
+        <section class="view hidden" id="approvals-view"><div data-body></div></section>
+        <section class="view hidden" id="hr-view"><div class="tabs" data-nav></div><div data-body></div></section>
       </div>
+    </div>
 
-      <form class="find" id="find-form" novalidate>
-        <input id="find-input" type="text" placeholder="Search by username" autocomplete="off" />
-        <button class="mini-btn" type="submit">Chat</button>
-      </form>
-      <p class="find-status" id="find-status" role="status"></p>
+    <!-- ===== Floating chat bubble + window ===== -->
+    <button class="chat-fab" id="chat-fab" type="button" aria-label="Open messages" aria-expanded="false" aria-controls="chat-view">
+      <span data-icon="chat" data-size="26"></span>
+      <span class="fab-badge hidden" id="chat-badge"></span>
+    </button>
 
-      <ul class="convo-list" id="convo-list"></ul>
-    </aside>
-
-    <!-- Right: the open conversation -->
-    <section class="thread">
-      <div class="empty" id="thread-empty">Select a chat, or find someone by username to start one.</div>
-      <div class="thread-body hidden" id="thread-body">
-        <header class="thread-header">
-          <button class="icon-btn mobile-only" id="back-btn" type="button" aria-label="Back to chats">←</button>
-          <span id="peer-avatar"></span>
-          <div class="peer-text">
-            <strong id="peer-name"></strong>
-            <small id="peer-status"></small>
+    <section class="chat-panel hidden" id="chat-view" aria-label="Messages">
+      <header class="chat-titlebar">
+        <strong>Messages</strong>
+        <button class="round-btn sm" id="chat-close" type="button" aria-label="Close messages" data-icon="close" data-size="18"></button>
+      </header>
+      <div class="chat-body">
+        <aside class="chat-side">
+          <div class="username-box hidden" id="username-box">
+            <p>Choose a username so friends can find you:</p>
+            <form id="username-form" novalidate>
+              <input id="username-input" type="text" placeholder="e.g. maynard_01" maxlength="30" autocomplete="off" />
+              <button class="mini-btn" type="submit">Save</button>
+            </form>
+            <p class="status" id="username-status" role="status"></p>
           </div>
-        </header>
-        <div class="messages" id="messages" aria-live="polite"></div>
-        <div class="typing hidden" id="typing" aria-live="polite"><span></span><span></span><span></span></div>
-        <p class="send-status" id="send-status" role="status"></p>
-        <div class="attach-chip hidden" id="attach-chip">
-          <span id="attach-name"></span>
-          <button type="button" id="attach-clear" aria-label="Remove attachment">✕</button>
-        </div>
-        <form class="composer" id="send-form" novalidate>
-          <button type="button" class="attach-btn" id="attach-btn" aria-label="Attach a file" title="Attach a file (max 10 MB)">📎</button>
-          <input id="attach-input" type="file" class="hidden"
-                 accept=".png,.jpg,.jpeg,.gif,.webp,.pdf,.txt,.csv,.zip,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.mp3,.m4a,.wav,.ogg,.mp4,.webm" />
-          <input id="msg-input" type="text" placeholder="Aa" maxlength="2000" autocomplete="off" />
-          <button type="submit" id="send-btn">Send</button>
-        </form>
+          <form class="find" id="find-form" novalidate>
+            <input id="find-input" type="text" placeholder="Search by username" autocomplete="off" />
+            <button class="mini-btn" type="submit">Chat</button>
+          </form>
+          <p class="find-status" id="find-status" role="status"></p>
+          <ul class="convo-list" id="convo-list"></ul>
+        </aside>
+
+        <section class="thread">
+          <div class="empty" id="thread-empty">Select a chat, or find someone by username to start one.</div>
+          <div class="thread-body hidden" id="thread-body">
+            <header class="thread-header">
+              <button class="icon-btn mobile-only" id="back-btn" type="button" aria-label="Back to chats" data-icon="back" data-size="20"></button>
+              <span id="peer-avatar"></span>
+              <div class="peer-text">
+                <strong id="peer-name"></strong>
+                <small id="peer-status"></small>
+              </div>
+            </header>
+            <div class="messages" id="messages" aria-live="polite"></div>
+            <div class="typing hidden" id="typing" aria-live="polite"><span></span><span></span><span></span></div>
+            <p class="send-status" id="send-status" role="status"></p>
+            <div class="attach-chip hidden" id="attach-chip">
+              <span id="attach-name"></span>
+              <button type="button" id="attach-clear" aria-label="Remove attachment">✕</button>
+            </div>
+            <form class="composer" id="send-form" novalidate>
+              <button type="button" class="attach-btn" id="attach-btn" aria-label="Attach a file" title="Attach a file (max 10 MB)" data-icon="clip" data-size="20"></button>
+              <input id="attach-input" type="file" class="hidden"
+                     accept=".png,.jpg,.jpeg,.gif,.webp,.pdf,.txt,.csv,.zip,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.mp3,.m4a,.wav,.ogg,.mp4,.webm" />
+              <input id="msg-input" type="text" placeholder="Aa" maxlength="2000" autocomplete="off" />
+              <button type="submit" id="send-btn" aria-label="Send">Send</button>
+            </form>
+          </div>
+        </section>
       </div>
     </section>
-  </main>
-
-  <!-- ========== HR VIEW ========== -->
-  <section class="panel hidden" id="hr-view"><div class="tabs" data-nav></div><div data-body></div></section>
   </div>
 
-  <dialog class="dialog" id="hr-dialog"></dialog>
+  <dialog class="dialog" id="app-dialog"></dialog>
+
+  <dialog class="dialog palette" id="palette" aria-label="Search any action">
+    <input id="palette-input" type="text" placeholder="Search any action…" autocomplete="off" aria-label="Search any action" />
+    <ul id="palette-list"></ul>
+  </dialog>
+
   <div class="toast hidden" id="toast" role="status" aria-live="polite"></div>
 
-  <!-- ========== NEW PASSWORD VIEW (opened from the reset-password email) ========== -->
-  <main class="card hidden" id="recovery-view">
+  <!-- ========== NEW PASSWORD (opened from the reset-password email) ========== -->
+  <main class="card auth-card" id="recovery-view">
+    <div class="auth-brand"><span class="brand-mark">W</span><strong>Workspace</strong></div>
     <h1>Set a new password</h1>
     <p class="subtitle">Choose a new password for your account</p>
     <form id="recovery-form" novalidate>
