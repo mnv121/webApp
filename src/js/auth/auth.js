@@ -10,7 +10,7 @@ import { $ } from "../core/state.js";
 const REDIRECT_URL = window.location.origin + window.location.pathname;
 
 const MESSAGES = {
-  invalid_credentials: "Incorrect email or password.",
+  invalid_credentials: "Incorrect username/email or password.",
   email_not_confirmed: "Please confirm your email first. Check your inbox for the link.",
   user_already_exists: "An account with this email already exists. Try signing in instead.",
   weak_password: "Password is too weak. Use at least 8 characters.",
@@ -18,6 +18,8 @@ const MESSAGES = {
   over_request_rate_limit: "Too many attempts. Please wait a bit and try again.",
   validation_failed: "That email address doesn't look right.",
   signup_disabled: "Sign-ups are currently disabled.",
+  PGRST202: "Username sign-in isn't set up yet. Run sql/06_username_login.sql in Supabase, then reload.",
+  "42883": "Username sign-in isn't set up yet. Run sql/06_username_login.sql in Supabase, then reload.",
   provider_disabled: "That sign-in method isn't enabled yet in Supabase.",
 };
 const authError = (err) => MESSAGES[err.code] || err.message || "Something went wrong.";
@@ -64,8 +66,29 @@ export function initAuth(supabase, { onPasswordChanged }) {
     registerForm.classList.toggle("hidden", isLogin);
     $("tab-login").classList.toggle("active", isLogin);
     $("tab-register").classList.toggle("active", !isLogin);
+    $("auth-title").textContent = isLogin ? "Welcome back" : "Create your account";
+    $("auth-sub").textContent = isLogin ? "Sign in to your account to continue" : "It only takes a minute";
     setStatus("");
   }
+  // Show / hide button on every password box
+  for (const id of ["login-password", "reg-password", "reg-confirm"]) {
+    const input = $(id);
+    const wrap = document.createElement("div");
+    wrap.className = "pw-wrap";
+    input.replaceWith(wrap);
+    const eye = document.createElement("button");
+    eye.type = "button";
+    eye.className = "pw-toggle";
+    eye.textContent = "Show";
+    eye.setAttribute("aria-label", "Show or hide password");
+    eye.addEventListener("click", () => {
+      const hidden = input.type === "password";
+      input.type = hidden ? "text" : "password";
+      eye.textContent = hidden ? "Hide" : "Show";
+    });
+    wrap.append(input, eye);
+  }
+
   $("tab-login").addEventListener("click", () => showTab("login"));
   $("tab-register").addEventListener("click", () => showTab("register"));
 
@@ -86,33 +109,51 @@ export function initAuth(supabase, { onPasswordChanged }) {
     )
   );
 
+  // "maynard_01" or "me@mail.com" -> the email Supabase signs in with (null if unknown)
+  async function resolveEmail(identifier) {
+    const id = identifier.trim();
+    if (id.includes("@")) return id;
+    const { data, error } = await supabase.rpc("login_email", { identifier: id });
+    if (error) throw error;
+    return data || null;
+  }
+
   loginForm.addEventListener("submit", (e) => {
     e.preventDefault();
-    const email = $("login-email").value.trim();
+    const identifier = $("login-email").value.trim();
     const password = $("login-password").value;
-    if (!email || !password) return setStatus("Enter your email and password.");
-    run(loginForm.querySelector("button[type=submit]"), async () =>
-      check(await supabase.auth.signInWithPassword({ email, password }))
-    );
+    if (!identifier || !password) return setStatus("Enter your username or email, and your password.");
+    run(loginForm.querySelector("button[type=submit]"), async () => {
+      const email = await resolveEmail(identifier);
+      // unknown username: same message as a wrong password
+      if (!email) throw { code: "invalid_credentials" };
+      check(await supabase.auth.signInWithPassword({ email, password }));
+    });
   });
 
   registerForm.addEventListener("submit", (e) => {
     e.preventDefault();
     const name = $("reg-name").value.trim();
+    const username = $("reg-username").value.trim().toLowerCase();
     const email = $("reg-email").value.trim();
     const password = $("reg-password").value;
     const confirm = $("reg-confirm").value;
 
     if (!name) return setStatus("Please enter your name.");
+    if (!/^[a-z0-9_]{3,30}$/.test(username)) return setStatus("Username: 3-30 characters, letters, numbers or underscore.");
+    if (!email.includes("@")) return setStatus("Please enter a valid email address.");
     if (password.length < 8) return setStatus("Password must be at least 8 characters.");
     if (password !== confirm) return setStatus("Passwords don't match.");
 
     run(registerForm.querySelector("button[type=submit]"), async () => {
+      const free = await supabase.rpc("username_available", { uname: username });
+      if (free.error) throw free.error;
+      if (!free.data) return setStatus("That username is taken. Try another.");
       const data = check(
         await supabase.auth.signUp({
           email,
           password,
-          options: { data: { full_name: name }, emailRedirectTo: REDIRECT_URL },
+          options: { data: { full_name: name, username }, emailRedirectTo: REDIRECT_URL },
         })
       );
       // With email confirmation on, Supabase hides whether an email is taken,
@@ -129,18 +170,22 @@ export function initAuth(supabase, { onPasswordChanged }) {
   });
 
   $("resend-btn").addEventListener("click", () => {
-    const email = $("login-email").value.trim();
-    if (!email) return setStatus("Type your email above first.");
+    const typed = $("login-email").value.trim();
+    if (!typed) return setStatus("Type your username or email above first.");
     run(null, async () => {
+      const email = await resolveEmail(typed);
+      if (!email) return setStatus("No account found with that username.");
       check(await supabase.auth.resend({ type: "signup", email, options: { emailRedirectTo: REDIRECT_URL } }));
       setStatus("Confirmation email sent. Check your inbox.", true);
     });
   });
 
   $("forgot-btn").addEventListener("click", () => {
-    const email = $("login-email").value.trim();
-    if (!email) return setStatus("Type your email above first, then click 'Forgot password?'.");
+    const typed = $("login-email").value.trim();
+    if (!typed) return setStatus("Type your username or email above first, then click 'Forgot password?'.");
     run(null, async () => {
+      const email = await resolveEmail(typed);
+      if (!email) return setStatus("If that account exists, a reset email is on its way.", true);
       check(await supabase.auth.resetPasswordForEmail(email, { redirectTo: REDIRECT_URL }));
       setStatus("Password reset email sent. Check your inbox.", true);
     });

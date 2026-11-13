@@ -14,9 +14,27 @@
   <script src="https://accounts.google.com/gsi/client" async defer></script>
 </head>
 <body data-screen="auth">
-  <main class="card auth-card" id="auth-view">
-        <div class="auth-brand"><span class="brand-mark">W</span><strong>Workspace</strong></div>
-    <div class="tabs" role="tablist">
+  <main class="auth-split" id="auth-view">
+    <section class="auth-hero" aria-hidden="true">
+      <div class="auth-brand light"><span class="brand-mark">W</span><strong>Workspace</strong></div>
+      <div class="hero-copy">
+        <h2>Everything HR,<br />in one place.</h2>
+        <p>Clock in, request leave, track approvals and chat with your team from any device.</p>
+        <ul class="hero-points">
+          <li><span>&#10003;</span> Attendance and leave in a few taps</li>
+          <li><span>&#10003;</span> Clear approval tracking</li>
+          <li><span>&#10003;</span> Secure, role-based access</li>
+        </ul>
+      </div>
+      <small class="hero-foot">Protected by row-level security</small>
+    </section>
+
+    <section class="auth-panel">
+      <div class="auth-form">
+        <div class="auth-brand mobile-brand"><span class="brand-mark">W</span><strong>Workspace</strong></div>
+        <h1 id="auth-title">Welcome back</h1>
+        <p class="subtitle" id="auth-sub">Sign in to your account to continue</p>
+        <div class="tabs" role="tablist">
       <button class="tab active" id="tab-login" role="tab" type="button">Sign in</button>
       <button class="tab" id="tab-register" role="tab" type="button">Create account</button>
     </div>
@@ -38,12 +56,12 @@
       Continue with Facebook
     </button>
 
-    <div class="divider"><span>or use email</span></div>
+    <div class="divider"><span>or use username or email</span></div>
 
     <!-- Sign-in form -->
     <form id="login-form" novalidate>
-      <label for="login-email">Email</label>
-      <input id="login-email" type="email" autocomplete="email" required />
+      <label for="login-email">Username or email</label>
+      <input id="login-email" type="text" autocomplete="username" autocapitalize="none" spellcheck="false" required />
       <label for="login-password">Password</label>
       <input id="login-password" type="password" autocomplete="current-password" required />
       <button class="btn btn-primary" type="submit">Sign in</button>
@@ -55,6 +73,8 @@
     <form id="register-form" class="hidden" novalidate>
       <label for="reg-name">Full name</label>
       <input id="reg-name" type="text" autocomplete="name" required />
+      <label for="reg-username">Username</label>
+      <input id="reg-username" type="text" autocomplete="username" autocapitalize="none" spellcheck="false" maxlength="30" placeholder="letters, numbers, underscore" required />
       <label for="reg-email">Email</label>
       <input id="reg-email" type="email" autocomplete="email" required />
       <label for="reg-password">Password (min. 8 characters)</label>
@@ -65,6 +85,9 @@
     </form>
 
     <p class="status" id="status" role="status"></p>
+  
+      </div>
+    </section>
   </main>
 
   <!-- ========== APP (shown after login) ========== -->
